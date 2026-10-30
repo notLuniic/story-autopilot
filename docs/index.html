@@ -1,0 +1,856 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>Story Autopilot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: top bar, lock-in strip, two stacked week boards (7 day columns of 9:16 story cards), error log; a stepper overlay for creating stories */
+:root{
+  --bg:#f2f4f8; --panel:#ffffff; --sunk:#e9edf4; --ink:#121826; --muted:#5a6477; --line:#dce1ea;
+  --accent:#2f50c8; --accent-ink:#ffffff; --accent-soft:#e5eafb;
+  --ok:#1d7549; --ok-soft:#e0f2e8; --warn:#935600; --warn-soft:#faefd9; --bad:#b0251d; --bad-soft:#fae3e1;
+  --ig:#c13584; --fb:#1877f2;
+  --frame:#1b2232; --frame-ink:#e9edf5; --scrim:rgba(13,18,28,.55);
+  --f-ui:"Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e121a; --panel:#161b26; --sunk:#1c2230; --ink:#e6eaf2; --muted:#97a1b5; --line:#283041;
+  --accent:#8ba3ff; --accent-ink:#0e121a; --accent-soft:#212b48;
+  --ok:#6dd29d; --ok-soft:#163224; --warn:#efb65a; --warn-soft:#392a12; --bad:#ff8a7f; --bad-soft:#3c1c1a;
+  --ig:#ef7ab8; --fb:#6aa8ff; --frame:#252e41; --frame-ink:#e9edf5; --scrim:rgba(0,0,0,.6); color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e121a; --panel:#161b26; --sunk:#1c2230; --ink:#e6eaf2; --muted:#97a1b5; --line:#283041;
+  --accent:#8ba3ff; --accent-ink:#0e121a; --accent-soft:#212b48;
+  --ok:#6dd29d; --ok-soft:#163224; --warn:#efb65a; --warn-soft:#392a12; --bad:#ff8a7f; --bad-soft:#3c1c1a;
+  --ig:#ef7ab8; --fb:#6aa8ff; --frame:#252e41; --frame-ink:#e9edf5; --scrim:rgba(0,0,0,.6); color-scheme:dark }
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5;margin:0}
+.wrap{max-width:1240px;margin:0 auto;padding-block:20px 72px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:22px}
+h1{font-size:22px;line-height:1.15;margin:0;font-weight:700;letter-spacing:-.01em}
+h2{font-size:17px;margin:0;font-weight:600;text-wrap:balance}
+h3{font-size:12px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+p{margin:0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:13px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.spacer{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+button,.btn{font:inherit;font-size:14px;font-weight:600;border:0;border-radius:9px;padding:9px 14px;cursor:pointer;
+  color:var(--accent);background:var(--accent-soft);display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button.primary{background:var(--accent);color:var(--accent-ink)}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+button.danger{background:var(--bad-soft);color:var(--bad)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,.card:focus-visible,.choice:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+select,input[type=text],input[type=password],input[type=time]{font:inherit;font-size:15px;color:var(--ink);background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;padding:8px 10px;min-width:0}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.info{background:var(--accent-soft);color:var(--accent)}
+.badge{font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:5px;color:#fff}
+.badge.instagram{background:var(--ig)} .badge.facebook{background:var(--fb)}
+.badge.off{background:transparent;border:1px solid var(--line);color:var(--muted)}
+
+/* top bar */
+.top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:34px;height:34px;border-radius:9px;background:var(--accent);position:relative;flex:none}
+.mark::before,.mark::after{content:"";position:absolute;top:7px;bottom:7px;width:6px;border-radius:3px;background:var(--accent-ink);opacity:.9}
+.mark::before{left:9px}.mark::after{left:19px;opacity:.55}
+.demo{border:1px dashed var(--warn);color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:8px 12px;font-size:13.5px}
+
+/* lock-in strip */
+.lock{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.lock .panel{display:flex;flex-direction:column;gap:6px}
+.lock .big{font-size:15px;font-weight:600}
+.lock .pill{align-self:flex-start;white-space:normal}
+
+/* week boards */
+.week{display:flex;flex-direction:column;gap:10px}
+.board-scroll{overflow-x:auto;padding-bottom:6px}
+.board{display:grid;grid-template-columns:repeat(7,minmax(128px,1fr));gap:10px;min-width:930px}
+.day{display:flex;flex-direction:column;gap:10px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:170px}
+.day.past{background:transparent}
+.day-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.day-h b{font-size:13px;font-weight:600}
+.day.today{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+.day.today .day-h b{color:var(--accent)}
+.card{display:flex;flex-direction:column;gap:5px;border-radius:10px;cursor:pointer;min-width:0;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit}
+.card .t{font-family:var(--f-mono);font-size:13px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:4px}
+.card .n{font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.card .plats{display:flex;gap:4px;flex-wrap:wrap}
+.card .st{font-size:11.5px;font-weight:600}
+.frame{aspect-ratio:9/16;max-width:100%;width:100%;border-radius:10px;background:var(--frame);color:var(--frame-ink);overflow:hidden;position:relative}
+.frame img,.frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.frame .bars{position:absolute;top:7px;left:7px;right:7px;height:2px;border-radius:2px;background:rgba(255,255,255,.4);z-index:1}
+.frame .vid{position:absolute;bottom:7px;right:7px;z-index:1;font-size:10px;font-weight:700;background:rgba(0,0,0,.55);color:#fff;border-radius:4px;padding:1px 5px}
+.frame .ph{position:absolute;inset:auto 8px 8px 8px;font-size:11px;font-family:var(--f-mono);opacity:.7;overflow-wrap:anywhere}
+.card.past .frame{opacity:.75}
+.st-ready{color:var(--ok)} .st-posted{color:var(--ok)} .st-problem,.st-missed,.st-failed{color:var(--bad)}
+.st-checking,.st-due,.st-paused,.st-partial{color:var(--warn)}
+.empty-day{font-size:12.5px;color:var(--muted)}
+.add-day{font-size:12.5px;padding:5px 8px;align-self:flex-start;background:transparent;color:var(--muted);border:1px dashed var(--line)}
+
+/* log */
+.tbl-scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:760px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.msg{min-width:260px}
+.sev{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.sev.error{color:var(--bad)} .sev.warning{color:var(--warn)} .sev.info{color:var(--ok)}
+
+/* overlay (stepper + details + settings) */
+.overlay{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;
+  padding-block:max(24px, env(safe-area-inset-top, 0px)) 24px;
+  padding-left:max(12px, env(safe-area-inset-left, 0px));padding-right:max(12px, env(safe-area-inset-right, 0px))}
+.sheet{background:var(--panel);border-radius:14px;border:1px solid var(--line);width:100%;max-width:860px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.sheet.narrow{max-width:560px}
+.sheet-h{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.sheet-b{padding:18px;display:flex;flex-direction:column;gap:16px}
+.sheet-f{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line)}
+.steps{display:flex;gap:6px;flex-wrap:wrap}
+.steps span{font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.steps span.on{background:var(--accent);color:var(--accent-ink)} .steps span.done{background:var(--accent-soft);color:var(--accent)}
+.compose{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start}
+@media (max-width:640px){.compose{grid-template-columns:1fr}.compose .preview{max-width:180px;margin:0 auto}}
+.compose>*{min-width:0}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;cursor:pointer}
+.drop.drag{border-color:var(--accent);background:var(--accent-soft)}
+.msgs{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;font-size:13.5px}
+.msgs li.bad{color:var(--bad)} .msgs li.warn{color:var(--warn)} .msgs li.ok{color:var(--ok)}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.choice{position:relative;display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--line);border-radius:11px;padding:12px;cursor:pointer}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice.on{border-color:var(--accent);background:var(--accent-soft)}
+.choice.disabled{opacity:.45;cursor:not-allowed}
+.choice b{display:block;font-size:14.5px}
+.choice .tick{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line);flex:none;margin-top:2px;display:grid;place-items:center;font-size:12px;color:var(--accent-ink)}
+.choice.on .tick{background:var(--accent);border-color:var(--accent)}
+.daypick{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.daypick button{flex-direction:column;gap:0;padding:8px 2px;background:var(--sunk);color:var(--ink);font-weight:500}
+.daypick button b{font-size:13px} .daypick button span{font-size:11.5px;color:var(--muted)}
+.daypick button.on{background:var(--accent);color:var(--accent-ink)} .daypick button.on span{color:var(--accent-ink);opacity:.8}
+.seg{display:inline-flex;background:var(--sunk);border-radius:10px;padding:3px;gap:3px;flex-wrap:wrap}
+.seg button{background:transparent;color:var(--muted);padding:7px 12px}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.summary{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;font-size:14px}
+.summary dt{color:var(--muted)} .summary dd{margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));z-index:40;background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.help{font-size:13px;color:var(--muted);line-height:1.5}
+.help ol{margin:6px 0 0;padding-left:20px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap" id="app">
+  <p class="muted">Loading…</p>
+</div>
+<div id="layer"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+"use strict";
+/* ============================================================== helpers == */
+const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
+const DAYN = {mon:"Monday",tue:"Tuesday",wed:"Wednesday",thu:"Thursday",fri:"Friday",sat:"Saturday",sun:"Sunday"};
+const PLAT = {instagram:"Instagram", facebook:"Facebook"};
+const PLAT_SHORT = {instagram:"IG", facebook:"FB"};
+const IMAGE_MAX = 8*1024*1024, VIDEO_MAX = 50*1024*1024;   // 50 MB: Supabase free plan's per-file limit
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem("sa:"+k)); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem("sa:"+k, JSON.stringify(v)); } catch(e){} },
+  del(k){ try { localStorage.removeItem("sa:"+k); } catch(e){} },
+};
+
+// Dates are "YYYY-MM-DD" strings in the client's time zone; times are "HH:MM"
+const ymd = (y,m,d) => `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+function addDays(s, n){ const [y,m,d] = s.split("-").map(Number); const t = new Date(Date.UTC(y,m-1,d+n)); return ymd(t.getUTCFullYear(), t.getUTCMonth()+1, t.getUTCDate()); }
+function dayIdx(s){ const [y,m,d] = s.split("-").map(Number); return (new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7; }
+function daysBetween(a,b){ const p = s => { const [y,m,d] = s.split("-").map(Number); return Date.UTC(y,m-1,d); }; return Math.round((p(b)-p(a))/864e5); }
+const mondayOf = s => addDays(s, -dayIdx(s));
+function partsIn(tz, ms){
+  const p = {}; new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})
+    .formatToParts(new Date(ms)).forEach(x => p[x.type] = x.value);
+  return {date:`${p.year}-${p.month}-${p.day}`, time:`${p.hour}:${p.minute}`};
+}
+function zonedMs(date, time, tz){
+  const [y,m,d] = date.split("-").map(Number), [hh,mm] = time.split(":").map(Number);
+  const target = Date.UTC(y,m-1,d,hh,mm); let guess = target;
+  for (let i=0;i<3;i++){ const p = partsIn(tz, guess); const [py,pm,pd] = p.date.split("-").map(Number); const [ph,pmin] = p.time.split(":").map(Number);
+    guess += target - Date.UTC(py,pm-1,pd,ph,pmin); }
+  return guess;
+}
+function fmtDate(s, opts={weekday:"short", day:"numeric", month:"short"}){ const [y,m,d] = s.split("-").map(Number); return new Date(Date.UTC(y,m-1,d,12)).toLocaleDateString("en-AU",{...opts,timeZone:"UTC"}); }
+function ago(iso){ if(!iso) return ""; const s = (Date.now()-Date.parse(iso))/1000; if (s<90) return "just now"; if (s<3600) return Math.round(s/60)+" min ago"; if (s<86400*2) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" days ago"; }
+function stamp(iso, tz){ if(!iso) return "–"; const p = partsIn(tz, Date.parse(iso)); return `${fmtDate(p.date)} ${p.time}`; }
+const fmtSize = n => n >= 1e6 ? (n/1e6).toFixed(1)+" MB" : Math.max(1, Math.round(n/1e3))+" KB";
+const newId = () => "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+async function sha1hex(text){ const b = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function blobToBase64(blob){ return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+function toast(msg, ms=4200){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms); }
+function parseYaml(text){
+  const o = {};
+  text.split("\n").forEach(line => {
+    const m = line.replace(/\s+#.*$/, "").match(/^([A-Za-z_][\w]*):\s*(.*)$/); if (!m) return;
+    let v = m[2].trim();
+    if (v.startsWith("[")) v = v.replace(/^\[|\]$/g,"").split(",").map(s=>s.trim().replace(/^["']|["']$/g,"")).filter(Boolean);
+    else if (v === "true" || v === "false") v = v === "true";
+    else if (/^-?\d+(\.\d+)?$/.test(v)) v = Number(v);
+    else v = v.replace(/^["']|["']$/g, "");
+    o[m[1]] = v;
+  });
+  return o;
+}
+
+/* ============================================================ schedule == */
+// Mirrors occurrences() in autopilot.py
+function occurrences(posts, start, end){
+  const out = [];
+  for (const p of posts || []){
+    if (p.paused || !p.date || !p.time) continue;
+    let dates = [];
+    if (p.repeat === "weekly"){
+      let d = p.date;
+      if (d < start) d = addDays(d, Math.ceil(daysBetween(d, start)/7)*7);
+      while (d <= end){ if (d >= start) dates.push(d); d = addDays(d, 7); }
+      if (p.until) dates = dates.filter(x => x <= p.until);
+    } else if (p.date >= start && p.date <= end) dates = [p.date];
+    dates.forEach(d => out.push({post:p, date:d, key:`${p.id}@${d}`}));
+  }
+  return out.sort((a,b) => (a.date+a.post.time).localeCompare(b.date+b.post.time));
+}
+
+// One word for where a story stands, plus detail lines
+function statusOf(o, ctx){
+  const {post, date, key} = o, c = ctx.client;
+  const rec = ctx.posted.occurrences?.[key], lk = ctx.lockin.items?.[key];
+  const when = zonedMs(date, post.time, c.timezone), now = Date.now(), grace = (c.grace_hours ?? 3)*3600e3;
+  const per = post.platforms.map(p => ({p, ...(rec?.platforms?.[p] || {})}));
+  const posted = per.filter(x => x.status === "posted").length;
+  if (posted === per.length) return {s:"posted", label:"Posted", per};
+  if (per.some(x => x.status === "missed")) return {s:"missed", label:"Missed", per};
+  if (per.some(x => x.status === "failed")) return {s:"failed", label: now < when+grace ? "Failed, retrying" : "Failed", per};
+  if (posted) return {s:"partial", label:`Posted to ${posted} of ${per.length}`, per};
+  if (when > now){
+    if (c.paused) return {s:"paused", label:"Paused", per, lk};
+    if (ctx.stale || !lk) return {s:"checking", label:"Waiting for check", per, lk};
+    if (!lk.ok) return {s:"problem", label:"Problem", per, lk};
+    return {s:"ready", label:"Scheduled", per, lk};
+  }
+  if (c.paused) return {s:"paused", label:"Not posted (paused)", per, lk};
+  if (post.created_at && Date.parse(post.created_at) > when) return {s:"paused", label:"Added after its time", per, lk};
+  if (now < when + grace) return {s:"due", label:"Posting now", per, lk};
+  return {s:"missed", label:"Not posted", per, lk};
+}
+
+/* ============================================================= backends == */
+// Real backend: Supabase (database, private storage, login). Uses the signed-in user's session;
+// the database only answers people listed as app users.
+const dbErr = (e, what) => { const m = e?.message || String(e); const err = new Error(
+  /JWT|jwt|token/i.test(m) ? "Your sign-in has expired. Sign in again." :
+  /row-level security|permission/i.test(m) ? "This login isn't allowed to do that." :
+  /already exists|Duplicate/i.test(m) ? "A file with that name already exists. Try again." :
+  /mime type|invalid_mime/i.test(m) ? "Storage only accepts JPG images and MP4/MOV videos." :
+  /maximum allowed size|too large/i.test(m) ? "The file is over the 50 MB storage limit." :
+  /Failed to fetch|NetworkError|network/i.test(m) ? "Can't reach Supabase. Check your connection." :
+  `${what || "Couldn't save"}: ${m}`); err.cause = e; return err; };
+
+class SupabaseBackend {
+  constructor(sb){ this.sb = sb; this.demo = false; this.urls = {}; this.local = {}; }
+  async clients(){
+    const {data, error} = await this.sb.from("clients").select("*").order("slug");
+    if (error) throw dbErr(error, "Couldn't load clients");
+    return data || [];
+  }
+  async load(slug, tz){
+    const since = addDays(mondayOf(partsIn(tz, Date.now()).date), -7);
+    const q = t => this.sb.from(t).select("*").eq("client", slug);
+    const [posts, occ, log, lock, status, client] = await Promise.all([
+      q("posts"), q("occurrences").gte("date", since), q("log").order("id", {ascending:false}).limit(150),
+      q("lockins"), this.sb.from("autopilot_status").select("*"), this.sb.from("clients").select("*").eq("slug", slug)]);
+    for (const r of [posts, occ, log, lock, status, client]) if (r.error) throw dbErr(r.error, "Couldn't load the schedule");
+    const data = {schedule:{posts:posts.data}, posted:{occurrences:Object.fromEntries(occ.data.map(o => [o.key, o]))},
+      log:{entries:[...log.data].reverse()}, lockin:lock.data[0] || {}, status:status.data[0] || null, client:client.data[0]};
+    await this.prepareMedia(data);
+    return data;
+  }
+  // Private files: get short-lived links for the previews on screen
+  async prepareMedia(data){
+    const paths = new Set();
+    data.schedule.posts.forEach(p => paths.add(p.type === "video" ? p.poster_path : p.media_path));
+    Object.values(data.posted.occurrences).forEach(o => paths.add(o.type === "video" ? o.poster_path : o.media_path));
+    const soon = Date.now() + 10*60e3;
+    const need = [...paths].filter(p => p && !this.local[p] && !(this.urls[p] && this.urls[p].exp > soon));
+    if (!need.length) return;
+    const {data:links, error} = await this.sb.storage.from("stories").createSignedUrls(need, 3600);
+    if (error) return;
+    (links || []).forEach(l => { if (l.signedUrl) this.urls[l.path] = {url:l.signedUrl, exp:Date.now() + 3600e3}; });
+  }
+  async signOne(path){
+    if (this.local[path]) return this.local[path];
+    const {data, error} = await this.sb.storage.from("stories").createSignedUrl(path, 3600);
+    return error ? "" : data.signedUrl;
+  }
+  async addPost(slug, post, files){
+    const done = [];
+    try {
+      for (const f of files){
+        const {error} = await this.sb.storage.from("stories").upload(f.path, new Blob([f.blob], {type:f.type}), {contentType:f.type, upsert:false, cacheControl:"3600"});
+        if (error) throw dbErr(error, "Upload failed");
+        done.push(f.path); this.local[f.path] = URL.createObjectURL(f.blob);
+      }
+      const {error} = await this.sb.from("posts").insert({...post, client:slug});
+      if (error) throw dbErr(error);
+    } catch(e){
+      if (done.length) await this.sb.storage.from("stories").remove(done).catch(() => {});
+      throw e;
+    }
+  }
+  async deletePost(id){ const {error} = await this.sb.from("posts").delete().eq("id", id); if (error) throw dbErr(error, "Couldn't delete"); }
+  async updatePost(id, patch){ const {error} = await this.sb.from("posts").update(patch).eq("id", id); if (error) throw dbErr(error); }
+  async setPaused(slug, paused){ const {error} = await this.sb.from("clients").update({paused}).eq("slug", slug); if (error) throw dbErr(error); }
+  async signOut(){ await this.sb.auth.signOut(); }
+  mediaSrc(path){ return this.local[path] || this.urls[path]?.url || ""; }
+}
+
+// Demo backend: sample data in memory, for looking around (nothing is saved)
+class DemoBackend {
+  constructor(){ this.demo = true; this.local = {}; this.build(); }
+  build(){
+    const tz = "Australia/Sydney", today = partsIn(tz, Date.now()).date, mon = mondayOf(today), lastMon = addDays(mon, -7);
+    this.client = {slug:"gwc", name:"Greta Workers Club", timezone:tz, platforms:["instagram","facebook"], paused:false, grace_hours:3, schedule_changed_at:new Date(Date.now()-864e5).toISOString()};
+    const art = (title, sub, bg, fg) => { const cv = document.createElement("canvas"); cv.width = 270; cv.height = 480; const x = cv.getContext("2d");
+      x.fillStyle = bg; x.fillRect(0,0,270,480); x.fillStyle = fg; x.fillRect(24,170,40,4);
+      x.font = "700 30px 'Schibsted Grotesk', sans-serif"; x.textBaseline = "top";
+      title.split("\n").forEach((l,i) => x.fillText(l, 24, 186 + i*34));
+      x.font = "500 15px 'Schibsted Grotesk', sans-serif"; x.globalAlpha = .8; x.fillText(sub, 24, 196 + title.split("\n").length*34);
+      x.globalAlpha = .55; x.font = "600 11px monospace"; x.fillText("SAMPLE ARTWORK", 24, 440); return cv.toDataURL("image/jpeg", .85); };
+    const N = "#14234b", G = "#d9b45a", L = "#9cc3ef";
+    const mk = (id, name, day, time, sub, colors) => { const path = `gwc/${id}.jpg`; this.local[path] = art(name.replace(" — ", "\n"), sub, ...colors);
+      return {id, name, media_path:path, type:"image", platforms:["instagram","facebook"], repeat:"weekly", date:addDays(lastMon, DAYS.indexOf(day)), time,
+        created_at:new Date(Date.parse(lastMon) - 864e5).toISOString()}; };
+    const posts = [
+      mk("p_schooners","Schooners — from $5","mon","11:00","Every Monday",[N,G]),
+      mk("p_pnc","P&C Raffle — Community","tue","16:00","Tuesdays 6pm",[N,L]),
+      mk("p_members","Members — Raffle","wed","16:30","Wednesdays",[N,G]),
+      mk("p_poker_wed","Poker — Wednesday","wed","17:00","Cards from 7pm",["#0f1a33",L]),
+      mk("p_trivia","Trivia — Night","thu","16:30","Thursdays 7pm",[N,G]),
+      mk("p_meat_fri","Meat & Fresh — Produce Raffle","fri","17:00","Fridays",[N,L]),
+      mk("p_poker_sat","Poker — Saturday","sat","17:00","Cards from 2pm",["#0f1a33",G]),
+      mk("p_meat_sun","Meat & Fresh — Produce Raffle","sun","11:30","Sundays",[N,G]),
+    ];
+    const cup = {id:"p_cup", name:"Melbourne Cup lunch", media_path:"gwc/p_cup.mp4", poster_path:"gwc/p_cup-poster.jpg", type:"video",
+      platforms:["instagram"], repeat:"once", date:addDays(mon, 8), time:"10:00", created_at:new Date().toISOString(), width:720, height:1280, duration:15};
+    this.local[cup.poster_path] = art("Melbourne\nCup lunch", "Video · 15s", "#3b1f4a", G);
+    posts.push(cup);
+    this.schedule = {posts};
+    const occ = {}, items = {}, nowMs = Date.now(), log = [];
+    occurrences(posts, lastMon, addDays(mon, 13)).forEach(o => {
+      const when = zonedMs(o.date, o.post.time, tz);
+      if (o.date >= mon) items[o.key] = {ok:true, problems:[], warnings:[], date:o.date, time:o.post.time};
+      if (when + 6*60e3 < nowMs){
+        const at = new Date(when + 4*60e3).toISOString();
+        occ[o.key] = {key:o.key, post_id:o.post.id, name:o.post.name, date:o.date, time:o.post.time, media_path:o.post.media_path, type:o.post.type,
+          platforms:Object.fromEntries(o.post.platforms.map(p => [p, {status:"posted", at, attempts:1}]))};
+      }
+    });
+    const trivia = Object.keys(occ).filter(k => k.startsWith("p_trivia@")).pop();
+    if (trivia){ const o = occ[trivia]; o.platforms.instagram.attempts = 2;
+      log.push({at:o.platforms.instagram.at, last_at:o.platforms.instagram.at, count:1, kind:"publish", severity:"error", message:"The media could not be fetched from URI (POST /media, HTTP 400)", post_id:"p_trivia", name:o.name, date:o.date, time:o.time, platform:"instagram"},
+               {at:new Date(Date.parse(o.platforms.instagram.at)+15*60e3).toISOString(), count:1, kind:"publish", severity:"info", message:"posted on attempt 2", post_id:"p_trivia", name:o.name, date:o.date, time:o.time, platform:"instagram"}); }
+    items[`p_cup@${cup.date}`] = {ok:true, problems:[], warnings:["720x1280 is fine; 1080x1920 looks sharper"], date:cup.date, time:cup.time};
+    const checked = new Date(zonedMs(mon, "00:04", tz)).toISOString();
+    log.push({at:checked, count:1, kind:"lock-in", severity:"warning", message:"Sample entry: lock-in problems, failed posts and missed posts appear in this log.", name:null});
+    this.posted = {occurrences:occ}; this.logdata = {entries:log};
+    this.lockin = {checked_at:new Date(Date.now()-5*60e3).toISOString(), reason:"new week", week_start:mon, items,
+      account:{ok:true, problems:[], instagram:"@gretaworkersclub", facebook:"Greta Workers Club", token:"never expires"}};
+  }
+  async clients(){ return [this.client]; }
+  async load(){ return {schedule:this.schedule, posted:this.posted, log:this.logdata, lockin:this.lockin, client:this.client,
+    status:{last_run_at:new Date(Date.now()-6*60e3).toISOString(), ok:true, message:"gwc: live"}}; }
+  async signOne(path){ return this.local[path] || ""; }
+  async pause(){ await new Promise(r => setTimeout(r, 500)); }
+  checkNew(){ const ws = this.lockin.week_start;
+    occurrences(this.schedule.posts, ws, addDays(ws, 13)).forEach(o => { if (!this.lockin.items[o.key]) this.lockin.items[o.key] = {ok:true, problems:[], warnings:[], date:o.date, time:o.post.time}; }); }
+  async addPost(slug, post, files){ await this.pause(); files.forEach(f => this.local[f.path] = URL.createObjectURL(f.blob));
+    this.schedule.posts.push({...post, client:slug}); this.checkNew(); }
+  async deletePost(id){ await this.pause(); this.schedule.posts = this.schedule.posts.filter(p => p.id !== id); }
+  async updatePost(id, patch){ await this.pause(); this.schedule.posts = this.schedule.posts.map(p => p.id === id ? {...p, ...patch} : p); }
+  async setPaused(slug, paused){ await this.pause(); this.client.paused = paused; }
+  async signOut(){}
+  mediaSrc(path){ return this.local[path] || ""; }
+}
+
+/* ================================================================ state == */
+const S = { backend:null, clients:[], slug:null, data:null, error:null, logFilter:"problems", polling:null };
+const ctx = () => {
+  const d = S.data || {};
+  const client = d.client || S.clients.find(c => c.slug === S.slug);
+  const lk = d.lockin || {};
+  const stale = !!(client && lk.checked_at && Date.parse(client.schedule_changed_at) > Date.parse(lk.checked_at));
+  return {client, schedule:d.schedule || {posts:[]}, posted:d.posted || {occurrences:{}}, log:d.log || {entries:[]}, lockin:lk, status:d.status, stale};
+};
+const CFG = window.STORY_AUTOPILOT || {};
+function onPages(){ return /\.github\.io$/.test(location.hostname) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname); }
+function nextCheck(){ // scheduled runs at :04 :19 :34 :49, usually a few minutes late
+  const d = new Date(); const m = d.getMinutes(); const next = [4,19,34,49].find(x => x > m) ?? 64; d.setMinutes(next, 0, 0); d.setMinutes(d.getMinutes() + 5);
+  return d.toLocaleTimeString("en-AU", {hour:"numeric", minute:"2-digit"}); }
+
+async function boot(){
+  if (!onPages() || store.get("demo")){ S.backend = new DemoBackend(); return start(); }
+  if (!CFG.supabaseUrl || !CFG.supabaseKey || !window.supabase){
+    $("#app").innerHTML = `${brandOnly()}<div class="panel"><h2>Almost there</h2><p class="muted" style="margin-top:6px">Add your Supabase project URL and publishable key to <span class="mono">docs/config.js</span> in the repository, then reload. The README's setup steps show where to find them.</p></div>`;
+    return;
+  }
+  const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {auth:{persistSession:true, autoRefreshToken:true}});
+  S.sb = sb;
+  const {data} = await sb.auth.getSession();
+  if (!data.session) return renderLogin();
+  S.backend = new SupabaseBackend(sb);
+  sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") location.reload(); });
+  start();
+}
+async function start(){
+  await refresh(true);
+  clearInterval(S.polling); S.polling = setInterval(() => { if (!document.hidden && !$("#layer").children.length) refresh(); }, 60e3);
+}
+
+async function refresh(first){
+  try {
+    if (first || !S.clients.length){
+      S.clients = await S.backend.clients();
+      if (!S.clients.length && !S.backend.demo) throw new Error("This login can't see any clients. If you've just set up Supabase, check the last step of setup.sql ran after you created your login.");
+      const saved = store.get("client");
+      S.slug = S.clients.some(c => c.slug === saved) ? saved : S.clients[0]?.slug;
+    }
+    const cl = S.clients.find(c => c.slug === S.slug);
+    S.data = cl ? await S.backend.load(S.slug, cl.timezone) : null;
+    S.error = null;
+  } catch(e){ S.error = e.message || String(e); }
+  render();
+}
+const brandOnly = () => `<div class="top"><div class="brand"><div class="mark" aria-hidden="true"></div><h1>Story Autopilot</h1></div></div>`;
+
+/* =============================================================== render == */
+function media(path, post, cls=""){
+  const src = path ? S.backend.mediaSrc(path) : "";
+  const vid = post?.type === "video";
+  return `<div class="frame ${cls}"><div class="bars"></div>${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="ph">${esc((post?.media_path||"").split("/").pop())}</span>`}${vid ? `<span class="vid">VIDEO</span>` : ""}</div>`;
+}
+const badges = (plats, all) => (all || plats).map(p => `<span class="badge ${plats.includes(p) ? p : "off"}">${PLAT_SHORT[p]}</span>`).join("");
+
+function render(){
+  const app = $("#app");
+  if (!S.backend) return;
+  const c = ctx();
+  if (!c.client){
+    app.innerHTML = `${topBar(c)}<div class="panel"><h2>No client found</h2><p class="muted" style="margin-top:6px">${S.error ? esc(S.error) : "Add a client in Supabase (see the README), then refresh."}</p></div>`;
+    wireTop(); return;
+  }
+  const tz = c.client.timezone, today = partsIn(tz, Date.now()).date, mon = mondayOf(today);
+  app.innerHTML = `
+    ${topBar(c)}
+    ${S.backend.demo ? `<div class="demo">Sample data. Nothing you do here is saved or posted. ${onPages() ? `<button class="ghost" id="leave-demo" type="button" style="margin-left:6px">Sign in to the real app</button>` : `This is a preview of the app; the real one runs from your GitHub Pages site.`}</div>` : ""}
+    ${S.error ? `<div class="panel" style="border-color:var(--bad);color:var(--bad)">${esc(S.error)}</div>` : ""}
+    ${lockStrip(c, mon)}
+    ${weekBoard(c, mon, "This week", today)}
+    ${weekBoard(c, addDays(mon,7), "Next week", today)}
+    ${logPanel(c)}`;
+  wireTop();
+  app.querySelectorAll("[data-occ]").forEach(b => b.addEventListener("click", () => openDetail(b.dataset.occ)));
+  app.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => openCreate({date:b.dataset.add})));
+  const lf = $("#logfilter"); if (lf) lf.addEventListener("change", () => { S.logFilter = lf.value; render(); });
+  const ld = $("#leave-demo"); if (ld) ld.addEventListener("click", () => { store.del("demo"); location.reload(); });
+}
+
+function topBar(c){
+  const cl = c.client, a = c.lockin.account || {};
+  const st = c.status, late = !st?.last_run_at || Date.now() - Date.parse(st.last_run_at) > 45*60e3;
+  const runTxt = !st?.last_run_at ? `<span class="pill warn">Autopilot hasn't run yet</span>`
+    : late ? `<span class="pill bad" title="${esc(st.message || "")}">Autopilot last ran ${ago(st.last_run_at)}</span>`
+    : `<span class="pill ${st.ok ? "ok" : "bad"}" title="${esc(st.message || "")}">Autopilot ran ${ago(st.last_run_at)}${st.ok ? "" : ", with errors"}</span>`;
+  return `<div class="top">
+    <div class="brand"><div class="mark" aria-hidden="true"></div><div><h1>Story Autopilot</h1>
+      <p class="small muted">${cl ? `${a.instagram ? esc(a.instagram) + " · " : ""}${a.facebook ? esc(a.facebook) + " · " : ""}${esc(cl.timezone)}` : ""}</p></div></div>
+    <div class="row">
+      ${S.clients.length > 1 ? `<label class="vis" for="client">Client</label><select id="client">${S.clients.map(x => `<option value="${esc(x.slug)}" ${x.slug === S.slug ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>` : (cl ? `<b>${esc(cl.name)}</b>` : "")}
+      ${cl ? `<span class="pill ${cl.paused ? "warn" : "ok"}">${cl.paused ? "Paused" : "Live"}</span>` : ""}
+      ${runTxt}
+      <button type="button" class="ghost" id="refresh" title="Load the latest">Refresh</button>
+      <button type="button" class="ghost" id="settings">Settings</button>
+      ${cl ? `<button type="button" class="primary" id="create">+ Create story</button>` : ""}
+    </div></div>`;
+}
+function wireTop(){
+  $("#create")?.addEventListener("click", () => openCreate({}));
+  $("#settings")?.addEventListener("click", () => renderSettings(false));
+  $("#refresh")?.addEventListener("click", async () => { $("#refresh").disabled = true; await refresh(); toast("Up to date"); });
+  $("#client")?.addEventListener("change", e => { S.slug = e.target.value; store.set("client", S.slug); refresh(); });
+}
+
+function lockStrip(c, mon){
+  const lk = c.lockin, tz = c.client.timezone, a = lk.account || {};
+  const weeks = [mon, addDays(mon,7)].map((ws, i) => {
+    const occ = occurrences(c.schedule.posts, ws, addDays(ws,6));
+    const probs = occ.filter(o => lk.items?.[o.key] && !lk.items[o.key].ok).length;
+    const unchecked = occ.filter(o => !lk.items?.[o.key]).length;
+    const label = i ? "Next week" : "This week";
+    let state, cls;
+    if (!occ.length){ state = "Nothing scheduled"; cls = ""; }
+    else if (c.stale || unchecked){ state = `Checking your changes by about ${nextCheck()}`; cls = "warn"; }
+    else if (probs){ state = `${probs} of ${occ.length} ${occ.length === 1 ? "story has" : "stories have"} a problem`; cls = "bad"; }
+    else { state = `${occ.length} ${occ.length === 1 ? "story" : "stories"} locked in`; cls = "ok"; }
+    return `<div class="panel"><h3>${label} · ${fmtDate(ws,{day:"numeric",month:"short"})} – ${fmtDate(addDays(ws,6),{day:"numeric",month:"short"})}</h3>
+      <div class="row"><span class="pill ${cls}">${state}</span></div></div>`;
+  }).join("");
+  const acct = !lk.checked_at ? `<span class="pill warn">Not checked yet</span><p class="small muted">The first check runs within 15 minutes of the autopilot being set up.</p>`
+    : `<span class="pill ${a.ok ? "ok" : "bad"}">${a.ok ? "Meta connected" : "Meta problem"}</span>
+       <p class="small muted">Last check ${esc(stamp(lk.checked_at, tz))} (${esc(lk.reason || "")})${a.token ? " · token " + esc(a.token) : ""}</p>
+       ${(a.problems || []).map(p => `<p class="small" style="color:var(--bad)">${esc(p)}</p>`).join("")}`;
+  return `<section class="lock">${weeks}<div class="panel"><h3>Monday lock-in</h3>${acct}</div></section>`;
+}
+
+function weekBoard(c, ws, title, today){
+  const occ = occurrences(c.schedule.posts, ws, addDays(ws,6));
+  const nowMs = Date.now(), tz = c.client.timezone;
+  // stories that went out but were since deleted still show, from the posting record
+  const extra = Object.entries(c.posted.occurrences || {}).filter(([k,v]) => v.date >= ws && v.date <= addDays(ws,6) && !occ.some(o => o.key === k))
+    .map(([k,v]) => ({key:k, date:v.date, deleted:true, post:{id:v.post_id, name:v.name, time:v.time, media_path:v.media_path, poster_path:v.poster_path, type:v.type, platforms:Object.keys(v.platforms)}}));
+  const all = [...occ, ...extra];
+  const cols = DAYS.map((d, i) => {
+    const date = addDays(ws, i), list = all.filter(o => o.date === date).sort((a,b) => a.post.time.localeCompare(b.post.time));
+    const past = date < today, isToday = date === today;
+    const cards = list.map(o => {
+      const st = statusOf(o, c), isPast = zonedMs(o.date, o.post.time, tz) < nowMs;
+      return `<button type="button" class="card ${isPast ? "past" : ""}" data-occ="${esc(o.key)}">
+        ${media(o.post.type === "video" ? o.post.poster_path : o.post.media_path, o.post)}
+        <span class="t"><span>${esc(o.post.time)}</span><span class="plats">${badges(o.post.platforms)}</span></span>
+        <span class="n">${esc(o.post.name || "Untitled")}${o.post.repeat === "weekly" ? ` <span class="muted" title="Repeats weekly">↻</span>` : ""}${o.deleted ? ` <span class="muted">(deleted)</span>` : ""}</span>
+        <span class="st st-${st.s}">${esc(st.label)}</span></button>`;
+    }).join("");
+    return `<div class="day ${past ? "past" : ""} ${isToday ? "today" : ""}">
+      <div class="day-h"><b>${DAYN[d].slice(0,3)} ${fmtDate(date,{day:"numeric"})}</b><span class="small muted">${isToday ? "Today" : fmtDate(date,{month:"short"})}</span></div>
+      ${cards || (past ? `<span class="empty-day">–</span>` : "")}
+      ${!past ? `<button type="button" class="add-day" data-add="${date}">+ Add</button>` : ""}
+    </div>`;
+  }).join("");
+  return `<section class="week"><div class="row"><h2>${title}</h2><span class="small muted">${fmtDate(ws,{day:"numeric",month:"long"})} – ${fmtDate(addDays(ws,6),{day:"numeric",month:"long"})}</span></div>
+    <div class="board-scroll"><div class="board">${cols}</div></div></section>`;
+}
+
+function logPanel(c){
+  const tz = c.client.timezone;
+  let list = [...(c.log.entries || [])].reverse();
+  if (S.logFilter === "problems") list = list.filter(e => e.severity !== "info");
+  const KIND = {"lock-in":"Lock-in check", publish:"Posting", missed:"Missed", account:"Meta account"};
+  const rows = list.slice(0, 150).map(e => `<tr>
+    <td class="mono small">${esc(stamp(e.last_at || e.at, tz))}</td>
+    <td><span class="sev ${esc(e.severity)}">${esc(e.severity)}</span><br><span class="small muted">${esc(KIND[e.kind] || e.kind)}</span></td>
+    <td>${esc(e.name || "–")}${e.date ? `<br><span class="small muted">${esc(fmtDate(e.date))} ${esc(e.time || "")}</span>` : ""}</td>
+    <td>${e.platform ? `<span class="badge ${esc(e.platform)}">${PLAT_SHORT[e.platform] || esc(e.platform)}</span>` : "–"}</td>
+    <td class="msg">${esc(e.message)}${e.count > 1 ? ` <span class="small muted">(×${e.count}, first ${esc(stamp(e.at, tz))})</span>` : ""}</td></tr>`).join("");
+  return `<section class="week"><div class="row"><h2>Error log</h2><span class="spacer"></span>
+      <label class="vis" for="logfilter">Show</label><select id="logfilter"><option value="problems" ${S.logFilter === "problems" ? "selected" : ""}>Problems only</option><option value="all" ${S.logFilter === "all" ? "selected" : ""}>Everything</option></select></div>
+    <div class="panel">${rows ? `<div class="tbl-scroll"><table><thead><tr><th>When</th><th>Type</th><th>Story</th><th>Platform</th><th>What happened</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<p class="muted">No scheduling errors. Problems found by the Monday lock-in, failed posts and missed posts appear here.</p>`}</div></section>`;
+}
+
+/* =============================================================== layers == */
+function openLayer(html, narrow){
+  const layer = $("#layer");
+  layer.innerHTML = `<div class="overlay" role="dialog" aria-modal="true"><div class="sheet ${narrow ? "narrow" : ""}">${html}</div></div>`;
+  const ov = layer.firstElementChild;
+  ov.addEventListener("click", e => { if (e.target === ov && !ov.dataset.busy) closeLayer(); });
+  document.addEventListener("keydown", escClose);
+  return ov;
+}
+function escClose(e){ if (e.key === "Escape" && !$("#layer .overlay")?.dataset.busy) closeLayer(); }
+function closeLayer(){ $("#layer").innerHTML = ""; document.removeEventListener("keydown", escClose); }
+
+/* ---- story details ---- */
+function openDetail(key){
+  const c = ctx(), tz = c.client.timezone;
+  const [id, date] = key.split("@");
+  let post = c.schedule.posts.find(p => p.id === id), deleted = false;
+  if (!post){ const v = c.posted.occurrences[key]; if (!v) return; deleted = true;
+    post = {id, name:v.name, time:v.time, media_path:v.media_path, poster_path:v.poster_path, type:v.type, platforms:Object.keys(v.platforms)}; }
+  const st = statusOf({post, date, key}, c), lk = c.lockin.items?.[key];
+  const preview = media(post.type === "video" ? post.poster_path : post.media_path, post);
+  const plats = st.per.map(x => `<li><span class="badge ${x.p}">${PLAT_SHORT[x.p]}</span> ${PLAT[x.p]}: <b class="st-${x.status === "posted" ? "posted" : x.status ? "failed" : "ready"}">${x.status ? esc(x.status[0].toUpperCase() + x.status.slice(1)) : "Waiting"}</b>${x.at ? ` <span class="muted">${esc(stamp(x.at, tz))}</span>` : ""}${x.error ? `<br><span class="small" style="color:var(--bad)">${esc(x.error)}</span>` : ""}</li>`).join("");
+  const ov = openLayer(`
+    <div class="sheet-h"><h2 style="flex:1">${esc(post.name || "Untitled")}</h2><button type="button" class="ghost" data-x>Close</button></div>
+    <div class="sheet-b"><div class="compose"><div class="preview">${preview}</div><div style="display:flex;flex-direction:column;gap:14px">
+      <dl class="summary">
+        <dt>Status</dt><dd><b class="st-${st.s}">${esc(st.label)}</b></dd>
+        <dt>When</dt><dd>${esc(fmtDate(date,{weekday:"long",day:"numeric",month:"long"}))}, ${esc(post.time)}${post.repeat === "weekly" ? `<br><span class="muted small">Repeats every ${DAYN[DAYS[dayIdx(post.date)]]}</span>` : ""}</dd>
+        <dt>Media</dt><dd>${post.type === "video" ? "Video" : "Image"}${post.width ? ` · ${post.width}×${post.height}` : ""}${post.duration ? ` · ${Math.round(post.duration)}s` : ""}${post.size ? ` · ${fmtSize(post.size)}` : ""}</dd>
+        <dt>Platforms</dt><dd><ul class="msgs">${plats}</ul></dd>
+        <dt>Story ID</dt><dd class="mono small">${esc(post.id)}</dd>
+      </dl>
+      ${lk && (lk.problems.length || lk.warnings.length) ? `<div><h3>Lock-in check</h3><ul class="msgs" style="margin-top:6px">${lk.problems.map(m => `<li class="bad">${esc(m)}</li>`).join("")}${lk.warnings.map(m => `<li class="warn">${esc(m)}</li>`).join("")}</ul></div>` : ""}
+      ${deleted ? `<p class="small muted">This story was deleted after it posted.</p>` : ""}
+    </div></div></div>
+    ${deleted ? "" : `<div class="sheet-f" id="dfoot">
+      ${post.repeat === "weekly" ? `<button type="button" class="ghost" data-act="stop">Stop repeating after this week</button>` : ""}
+      <button type="button" class="danger" data-act="ask">${post.repeat === "weekly" ? "Delete all weeks" : "Delete story"}</button></div>`}`);
+  ov.querySelector("[data-x]").addEventListener("click", closeLayer);
+  if (post.type === "video" && post.media_path && !S.backend.demo)          // play the actual video
+    S.backend.signOne(post.media_path).then(u => { const box = ov.querySelector(".preview"); if (u && box)
+      box.innerHTML = `<div class="frame"><video src="${esc(u)}" controls playsinline preload="metadata" poster="${esc(post.poster_path ? S.backend.mediaSrc(post.poster_path) : "")}"></video></div>`; });
+  ov.querySelector("#dfoot")?.addEventListener("click", async e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const foot = $("#dfoot");
+    if (b.dataset.act === "ask"){
+      foot.innerHTML = `<span class="small" style="flex:1;align-self:center">Delete "${esc(post.name)}"${post.repeat === "weekly" ? " for every week" : ""}? It comes off the schedule straight away.</span>
+        <button type="button" class="ghost" data-act="cancel">Keep it</button><button type="button" class="danger" data-act="del">Delete</button>`;
+      return;
+    }
+    if (b.dataset.act === "cancel") return openDetail(key);
+    const sunday = addDays(mondayOf(partsIn(tz, Date.now()).date), 6);
+    const run = b.dataset.act === "del" ? () => S.backend.deletePost(post.id) : () => S.backend.updatePost(post.id, {until:sunday});
+    ov.dataset.busy = "1"; foot.querySelectorAll("button").forEach(x => x.disabled = true);
+    try { await run(); closeLayer(); toast(b.dataset.act === "del" ? "Deleted" : "It won't repeat after this week"); afterSave(); }
+    catch(err){ delete ov.dataset.busy; foot.insertAdjacentHTML("afterbegin", `<span class="small" style="flex:1;color:var(--bad)">${esc(err.message)}</span>`); foot.querySelectorAll("button").forEach(x => x.disabled = false); }
+  });
+}
+
+function afterSave(){ refresh(); }   // the autopilot checks the change on its next run; the page refreshes every minute
+
+/* ---- create story (stepper) ---- */
+async function readMedia(file){
+  const isVideo = /^video\//.test(file.type) || /\.(mp4|mov)$/i.test(file.name);
+  const isImage = /^image\//.test(file.type);
+  const out = {problems:[], warnings:[], notes:[], name:file.name.replace(/\.[^.]+$/, "")};
+  if (isVideo){
+    if (!/\.(mp4|mov)$/i.test(file.name) && !/^video\/(mp4|quicktime)$/.test(file.type)) out.problems.push("Video must be MP4 or MOV.");
+    if (file.size > VIDEO_MAX) out.problems.push(`${(file.size/1e6).toFixed(0)} MB is over the 50 MB limit. Export it at a lower quality or shorter.`);
+    const url = URL.createObjectURL(file), v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+    try {
+      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error("This browser can't read that video.")); });
+      const dur = v.duration, w = v.videoWidth, h = v.videoHeight;
+      if (dur < 3 || dur > 60.5) out.problems.push(`It's ${dur.toFixed(0)} seconds long. Story videos must be 3 to 60 seconds.`);
+      if (w && h && Math.abs(w/h - 9/16) > .02) out.warnings.push(`${w}×${h} isn't 9:16, so it may be cropped.`);
+      v.currentTime = Math.min(.5, dur/2);
+      await new Promise(res => { v.onseeked = res; setTimeout(res, 2500); });
+      const cv = document.createElement("canvas"); cv.width = w || 540; cv.height = h || 960; cv.getContext("2d").drawImage(v, 0, 0, cv.width, cv.height);
+      const poster = await new Promise(r => cv.toBlob(r, "image/jpeg", .85));
+      Object.assign(out, {type:"video", blob:file, ext:/\.mov$/i.test(file.name) || file.type === "video/quicktime" ? "mov" : "mp4", poster, width:w, height:h, duration:dur, previewUrl:url});
+    } catch(e){ out.problems.push(e.message); Object.assign(out, {type:"video", blob:file, ext:"mp4"}); }
+    out.size = file.size; return out;
+  }
+  if (!isImage){ out.problems.push("Choose a JPG, PNG or WebP image, or an MP4 or MOV video."); return out; }
+  const url = URL.createObjectURL(file), im = new Image();
+  try { await new Promise((res, rej) => { im.onload = res; im.onerror = () => rej(new Error("That image can't be read.")); im.src = url; }); }
+  catch(e){ out.problems.push(e.message); return out; }
+  const w = im.naturalWidth, h = im.naturalHeight;
+  let blob = file;
+  if (file.type !== "image/jpeg"){
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const x = cv.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0,0,w,h); x.drawImage(im,0,0);
+    blob = await new Promise(r => cv.toBlob(r, "image/jpeg", .92));
+    out.notes.push(`Converted from ${(file.type.split("/")[1] || "image").toUpperCase()} to JPG, which Instagram requires.`);
+  }
+  if (blob.size > IMAGE_MAX) out.problems.push(`${(blob.size/1e6).toFixed(1)} MB is over Instagram's 8 MB limit. Export it at a lower quality.`);
+  if (Math.abs(w/h - 9/16) > .02) out.warnings.push(`${w}×${h} isn't 9:16, so it may be cropped.`);
+  else if (w < 1080) out.warnings.push(`${w}×${h} is smaller than 1080×1920 and may look soft.`);
+  Object.assign(out, {type:"image", blob, ext:"jpg", width:w, height:h, size:blob.size, previewUrl:URL.createObjectURL(blob)});
+  return out;
+}
+
+function openCreate(pre){
+  const c = ctx(), cl = c.client, tz = cl.timezone;
+  const today = partsIn(tz, Date.now()).date, mon = mondayOf(today);
+  const F = {step:0, media:null, name:"", platforms:[...cl.platforms], repeat:"once", week: pre.date && pre.date >= addDays(mon,7) ? 1 : 0,
+             date: pre.date || null, time: store.get("lastTime") || "17:00", saving:false, error:null};
+  const STEPS = ["Media", "Platforms", "Day & time", "Review"];
+  const ov = openLayer(`<div class="sheet-h"><div style="flex:1;display:flex;flex-direction:column;gap:8px"><h2>Create story</h2><div class="steps" id="steps"></div></div>
+      <button type="button" class="ghost" data-x>Cancel</button></div>
+    <div class="sheet-b" id="body"></div><div class="sheet-f" id="foot"></div>`);
+  ov.querySelector("[data-x]").addEventListener("click", () => { if (!F.saving) closeLayer(); });
+
+  const whenMs = () => F.date ? zonedMs(F.date, F.time, tz) : 0;
+  const tooSoon = () => F.date && whenMs() < Date.now() + 5*60e3;
+  const valid = [() => F.media && !F.media.problems.length, () => F.platforms.length > 0, () => F.date && F.time && (F.repeat === "weekly" || !tooSoon()), () => true];
+
+  function paint(){
+    $("#steps").innerHTML = STEPS.map((s,i) => `<span class="${i === F.step ? "on" : i < F.step ? "done" : ""}">${i+1}. ${s}</span>`).join("");
+    const preview = F.media?.previewUrl ? (F.media.type === "video"
+      ? `<div class="frame"><video src="${esc(F.media.previewUrl)}" muted playsinline controls></video></div>`
+      : `<div class="frame"><div class="bars"></div><img src="${esc(F.media.previewUrl)}" alt="Story preview"></div>`) : `<div class="frame"><div class="bars"></div><span class="ph">1080 × 1920</span></div>`;
+    let body = "";
+    if (F.step === 0){
+      const m = F.media;
+      body = `<div class="compose"><div class="preview">${preview}</div><div style="display:flex;flex-direction:column;gap:14px">
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a story image or video">
+          <b>${m ? "Choose a different file" : "Drop your story here"}</b>
+          <span class="small muted">Image: JPG or PNG, 1080×1920, up to 8 MB. Video: MP4 or MOV, 3–60 seconds, up to 50 MB.</span>
+          <button type="button" class="ghost" tabindex="-1">Choose file</button>
+          <input type="file" id="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" hidden>
+        </div>
+        ${m ? `<ul class="msgs">${m.problems.map(x => `<li class="bad">${esc(x)}</li>`).join("")}${m.warnings.map(x => `<li class="warn">${esc(x)}</li>`).join("")}${m.notes.map(x => `<li class="ok">${esc(x)}</li>`).join("")}
+          ${!m.problems.length ? `<li class="ok">${m.type === "video" ? "Video" : "Image"} ready${m.width ? ` · ${m.width}×${m.height}` : ""}${m.duration ? ` · ${m.duration.toFixed(0)}s` : ""} · ${fmtSize(m.size)}</li>` : ""}</ul>` : ""}
+        <label class="f" for="name">Name (only you see this)<input type="text" id="name" value="${esc(F.name)}" placeholder="e.g. Thursday Trivia" maxlength="80"></label>
+      </div></div>`;
+    }
+    if (F.step === 1){
+      const a = c.lockin.account || {};
+      body = `<p class="muted">Where should this story go?</p><div class="choices">${["instagram","facebook"].map(p => {
+        const enabled = cl.platforms.includes(p), on = F.platforms.includes(p);
+        return `<label class="choice ${on ? "on" : ""} ${enabled ? "" : "disabled"}"><input type="checkbox" data-p="${p}" ${on ? "checked" : ""} ${enabled ? "" : "disabled"}>
+          <span class="tick">${on ? "✓" : ""}</span><span><b>${PLAT[p]}</b><span class="small muted">${enabled ? esc((p === "instagram" ? a.instagram : a.facebook) || (p === "instagram" ? "Instagram story" : "Facebook Page story")) : "Not set up for this client"}</span></span></label>`; }).join("")}</div>`;
+    }
+    if (F.step === 2){
+      const ws = addDays(mon, 7*F.week);
+      const days = DAYS.map((d,i) => { const date = addDays(ws,i); const past = F.repeat === "once" && date < today;
+        return `<button type="button" data-d="${date}" class="${F.date === date ? "on" : ""}" ${past ? "disabled" : ""}><b>${DAYN[d].slice(0,3)}</b><span>${fmtDate(date,{day:"numeric",month:"short"})}</span></button>`; }).join("");
+      let hint = "";
+      if (F.date){
+        if (F.repeat === "weekly"){
+          const first = zonedMs(F.date, F.time, tz) < Date.now() + 5*60e3 ? addDays(F.date, 7) : F.date;
+          hint = `<p class="small">Posts every ${DAYN[DAYS[dayIdx(F.date)]]} at ${esc(F.time)}, starting ${esc(fmtDate(first,{weekday:"long",day:"numeric",month:"long"}))}.</p>`;
+        } else hint = tooSoon() ? `<p class="small" style="color:var(--bad)">That time has passed or is less than 5 minutes away. Pick a later time.</p>`
+          : `<p class="small">Posts once on ${esc(fmtDate(F.date,{weekday:"long",day:"numeric",month:"long"}))} at ${esc(F.time)}.</p>`;
+      }
+      body = `<div class="row"><span class="seg" role="group" aria-label="Repeat"><button type="button" data-r="once" class="${F.repeat === "once" ? "on" : ""}">Post once</button><button type="button" data-r="weekly" class="${F.repeat === "weekly" ? "on" : ""}">Every week</button></span>
+          <span class="seg" role="group" aria-label="Week"><button type="button" data-w="0" class="${F.week === 0 ? "on" : ""}">This week</button><button type="button" data-w="1" class="${F.week === 1 ? "on" : ""}">Next week</button></span></div>
+        <div class="daypick">${days}</div>
+        <div class="row"><label class="f" for="time">Time (${esc(tz.split("/").pop().replace("_"," "))})<input type="time" id="time" value="${esc(F.time)}" step="300"></label></div>${hint}`;
+    }
+    if (F.step === 3){
+      const m = F.media;
+      body = `<div class="compose"><div class="preview">${preview}</div><dl class="summary">
+        <dt>Name</dt><dd>${esc(F.name || m.name)}</dd>
+        <dt>Media</dt><dd>${m.type === "video" ? "Video" : "Image"} · ${m.width}×${m.height}${m.duration ? ` · ${m.duration.toFixed(0)}s` : ""} · ${fmtSize(m.size)}</dd>
+        <dt>Platforms</dt><dd>${F.platforms.map(p => `<span class="badge ${p}">${PLAT_SHORT[p]}</span> ${PLAT[p]}`).join(" &nbsp; ")}</dd>
+        <dt>When</dt><dd>${esc(fmtDate(F.date,{weekday:"long",day:"numeric",month:"long"}))}, ${esc(F.time)}${F.repeat === "weekly" ? "<br><span class='small muted'>then every week</span>" : ""}</dd>
+        <dt>Then</dt><dd class="small muted">${S.backend.demo ? "In the real app this saves to your repository and the autopilot checks it within a couple of minutes." : "Saved to your repository. The autopilot checks it within a couple of minutes and it shows as Scheduled, or as a Problem in the error log."}${cl.paused ? " This client is paused, so nothing posts until it's switched live." : ""}</dd>
+      </dl></div>${F.error ? `<p style="color:var(--bad)">${esc(F.error)}</p>` : ""}`;
+    }
+    $("#body").innerHTML = body;
+    const last = F.step === 3;
+    $("#foot").innerHTML = `${F.step ? `<button type="button" class="ghost" data-nav="back" ${F.saving ? "disabled" : ""}>Back</button>` : ""}<span class="spacer"></span>
+      ${last ? `<button type="button" data-nav="again" ${F.saving ? "disabled" : ""}>Schedule and add another</button><button type="button" class="primary" data-nav="save" ${F.saving ? "disabled" : ""}>${F.saving ? "Saving…" : "Schedule story"}</button>`
+             : `<button type="button" class="primary" data-nav="next" ${valid[F.step]() ? "" : "disabled"}>Next</button>`}`;
+    wire();
+  }
+
+  function wire(){
+    const body = $("#body");
+    if (F.step === 0){
+      const drop = $("#drop"), inp = $("#file");
+      const take = async file => { if (!file) return; drop.innerHTML = `<b>Checking ${esc(file.name)}…</b>`; F.media = await readMedia(file); if (!F.name) F.name = F.media.name; paint(); };
+      drop.addEventListener("click", () => inp.click());
+      drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); inp.click(); } });
+      inp.addEventListener("change", () => take(inp.files[0]));
+      drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("drag"); });
+      drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+      drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("drag"); take(e.dataTransfer.files[0]); });
+      $("#name").addEventListener("input", e => F.name = e.target.value);
+    }
+    if (F.step === 1) body.querySelectorAll("input[data-p]").forEach(i => i.addEventListener("change", () => {
+      F.platforms = [...body.querySelectorAll("input[data-p]:checked")].map(x => x.dataset.p); paint(); }));
+    if (F.step === 2){
+      body.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => { F.repeat = b.dataset.r; if (F.repeat === "once" && F.date && F.date < today) F.date = null; paint(); }));
+      body.querySelectorAll("[data-w]").forEach(b => b.addEventListener("click", () => { const old = F.week; F.week = +b.dataset.w; if (F.date) F.date = addDays(F.date, 7*(F.week-old)); if (F.repeat === "once" && F.date && F.date < today) F.date = null; paint(); }));
+      body.querySelectorAll("[data-d]").forEach(b => b.addEventListener("click", () => { F.date = b.dataset.d; paint(); }));
+      $("#time").addEventListener("change", e => { F.time = e.target.value || "17:00"; paint(); });
+    }
+    $("#foot").querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => nav(b.dataset.nav)));
+  }
+
+  async function nav(where){
+    if (where === "back"){ F.step--; F.error = null; return paint(); }
+    if (where === "next"){ if (valid[F.step]()) F.step++; return paint(); }
+    // save
+    F.saving = true; F.error = null; paint(); ov.dataset.busy = "1";
+    try {
+      const m = F.media, id = newId();
+      let date = F.date;
+      if (F.repeat === "weekly" && zonedMs(date, F.time, tz) < Date.now() + 5*60e3) date = addDays(date, 7);
+      const post = {id, name:(F.name || m.name).trim(), media_path:`${cl.slug}/${id}.${m.ext}`, type:m.type, platforms:F.platforms,
+        repeat:F.repeat, date, time:F.time, width:m.width || null, height:m.height || null, size:m.size || null};
+      if (m.duration) post.duration = Math.round(m.duration*10)/10;
+      const mime = m.type === "image" ? "image/jpeg" : (m.ext === "mov" ? "video/quicktime" : "video/mp4");
+      const files = [{path:post.media_path, blob:m.blob, type:mime}];
+      if (m.poster){ post.poster_path = `${cl.slug}/${id}-poster.jpg`; files.push({path:post.poster_path, blob:m.poster, type:"image/jpeg"}); }
+      await S.backend.addPost(cl.slug, post, files);
+      store.set("lastTime", F.time);
+      delete ov.dataset.busy;
+      toast(`Scheduled: ${post.name}, ${fmtDate(date)} ${F.time}`);
+      afterSave();
+      if (where === "again"){ Object.assign(F, {step:0, media:null, name:"", date:null, saving:false}); paint(); }
+      else closeLayer();
+    } catch(e){ F.saving = false; F.error = `Not saved: ${e.message}`; delete ov.dataset.busy; paint(); }
+  }
+  paint();
+}
+
+/* ---- sign in ---- */
+function renderLogin(msg){
+  $("#app").innerHTML = `${brandOnly()}
+    <form class="panel" id="login" style="max-width:420px;display:flex;flex-direction:column;gap:14px" novalidate>
+      <h2>Sign in</h2>
+      <label class="f" for="email">Email<input type="text" id="email" autocomplete="username" inputmode="email"></label>
+      <label class="f" for="password">Password<input type="password" id="password" autocomplete="current-password"></label>
+      <p id="lerr" style="color:var(--bad)" ${msg ? "" : "hidden"}>${esc(msg || "")}</p>
+      <div class="row"><button type="submit" class="primary" id="signin">Sign in</button><span class="spacer"></span>
+        <button type="button" class="ghost" id="demo">Look around with sample data</button></div>
+    </form>`;
+  $("#demo").addEventListener("click", () => { store.set("demo", true); location.reload(); });
+  $("#login").addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = $("#signin"), err = $("#lerr");
+    btn.disabled = true; btn.textContent = "Signing in…"; err.hidden = true;
+    const {error} = await S.sb.auth.signInWithPassword({email:$("#email").value.trim(), password:$("#password").value});
+    if (error){ err.textContent = /invalid/i.test(error.message) ? "That email and password don't match." : error.message; err.hidden = false; btn.disabled = false; btn.textContent = "Sign in"; return; }
+    S.backend = new SupabaseBackend(S.sb);
+    S.sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") location.reload(); });
+    start();
+  });
+  $("#email").focus();
+}
+
+/* ---- settings ---- */
+async function renderSettings(){
+  const c = ctx(), cl = c.client;
+  const email = S.backend.demo ? "sample data" : ((await S.sb.auth.getUser()).data.user?.email || "");
+  const ov = openLayer(`<div class="sheet-h"><h2 style="flex:1">Settings</h2><button type="button" class="ghost" data-x>Close</button></div>
+    <div class="sheet-b">
+      ${cl ? `<div class="panel" style="display:flex;flex-direction:column;gap:10px"><h3>Posting for ${esc(cl.name)}</h3>
+        <div class="row"><span class="pill ${cl.paused ? "warn" : "ok"}">${cl.paused ? "Paused: nothing posts" : "Live: stories post at their times"}</span><span class="spacer"></span>
+        <button type="button" id="toggle" class="${cl.paused ? "primary" : "danger"}">${cl.paused ? "Go live" : "Pause posting"}</button></div>
+        <p class="small muted" id="tmsg">${cl.paused ? "Switch live once the test story has posted correctly. The Monday lock-in still runs while paused." : "Pausing stops all scheduled posts for this client until you go live again."}</p></div>` : ""}
+      <p class="small muted">Signed in as ${esc(email)}.</p>
+    </div>
+    <div class="sheet-f">${S.backend.demo && onPages() ? `<button type="button" class="ghost" id="leave">Leave sample data</button>` : ""}<span class="spacer"></span>
+      ${S.backend.demo ? "" : `<button type="button" class="ghost" id="signout">Sign out</button>`}</div>`, true);
+  ov.querySelector("[data-x]").addEventListener("click", closeLayer);
+  $("#leave")?.addEventListener("click", () => { store.del("demo"); location.reload(); });
+  $("#signout")?.addEventListener("click", async () => { await S.backend.signOut(); location.reload(); });
+  const t = $("#toggle");
+  t?.addEventListener("click", async () => {
+    if (!t.dataset.sure){ t.dataset.sure = "1"; t.textContent = cl.paused ? "Yes, go live" : "Yes, pause"; $("#tmsg").textContent = cl.paused
+      ? "Stories will start posting to the real accounts at their scheduled times." : "No stories will post until you go live again."; return; }
+    t.disabled = true;
+    try { await S.backend.setPaused(cl.slug, !cl.paused); closeLayer(); toast(cl.paused ? "Live: stories will post" : "Paused"); await refresh(true); }
+    catch(e){ $("#tmsg").textContent = e.message; t.disabled = false; }
+  });
+}
+
+boot();
+</script>
+<style>.vis{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}</style>
+
+</body></html>
