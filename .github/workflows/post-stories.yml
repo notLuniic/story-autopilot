@@ -46,7 +46,12 @@ jobs:
 
       - name: Run autopilot
         env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          GWC_META_TOKEN: ${{ secrets.GWC_META_TOKEN }}
+          GWC_IG_ID: ${{ secrets.GWC_IG_ID }}
+          GWC_PAGE_ID: ${{ secrets.GWC_PAGE_ID }}
           CMD: ${{ github.event_name == 'workflow_dispatch' && inputs.command || 'run' }}
           CLIENT: ${{ inputs.client }}
           POST: ${{ inputs.post }}
