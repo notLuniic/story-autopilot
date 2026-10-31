@@ -1,0 +1,72 @@
+name: Post stories
+
+on:
+  schedule:
+    # Every 15 minutes (cron is UTC; each client's time zone is stored in Supabase)
+    - cron: "4,19,34,49 * * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "What to run"
+        type: choice
+        default: check
+        options: [check, week, ids, run, post]
+      client:
+        description: "Client (blank = all)"
+        required: false
+      post:
+        description: "For 'post': the story ID (shown in the app when you open a story)"
+        required: false
+      token_secret:
+        description: "For 'ids': name of the secret holding the Meta token"
+        required: false
+        default: META_TOKEN
+
+permissions:
+  contents: read
+  actions: write     # only to keep this schedule switched on (see the last step)
+
+concurrency:
+  group: post-stories
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run autopilot
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          CMD: ${{ github.event_name == 'workflow_dispatch' && inputs.command || 'run' }}
+          CLIENT: ${{ inputs.client }}
+          POST: ${{ inputs.post }}
+          TOKEN_SECRET: ${{ inputs.token_secret || 'META_TOKEN' }}
+        run: |
+          ARGS=()
+          [ -n "$CLIENT" ] && ARGS+=(--client "$CLIENT")
+          case "$CMD" in
+            post) python autopilot.py post --post "$POST" "${ARGS[@]}" ;;
+            ids)  python autopilot.py ids --token-secret "$TOKEN_SECRET" ;;
+            *)    python autopilot.py "$CMD" "${ARGS[@]}" ;;
+          esac
+
+      # GitHub switches off scheduled workflows in repos with no activity for 60 days. Nothing is
+      # committed any more, so once a day this re-confirms the schedule is on.
+      - name: Keep the schedule switched on
+        if: always() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(date -u +%H)" = "00" ] && [ "$(date -u +%M)" -lt 20 ]; then
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/post-stories.yml/enable" || true
+          fi
