@@ -270,6 +270,57 @@ def test_meta_calls_follow_graph_api_flow():
     srv.shutdown()
 
 
+def test_instagram_publish_retries_same_container_and_detects_published():
+    """media_publish fails 'cannot be found': retry the same container; if the container turns out
+    PUBLISHED, count it as posted instead of uploading again (no double posts)."""
+    srv, db, store = setup([])
+    calls, state = [], {"publish_fails": 2, "published_after_fail": False}
+
+    class R:
+        def __init__(self, body, code=200):
+            self.status_code, self._b, self.text = code, body, json.dumps(body)
+
+        def json(self):
+            return self._b
+
+    def fake_request(method, url, data=None, params=None, timeout=None):
+        path = url.split("/v25.0/")[1]
+        args = data or params or {}
+        calls.append((method, path))
+        if path == "ig1/media":
+            return R({"id": "c1"})
+        if path == "c1" and args.get("fields") == "status_code,status":
+            return R({"status_code": "FINISHED"})
+        if path == "c1" and args.get("fields") == "status_code":
+            return R({"status_code": "PUBLISHED" if state["published_after_fail"] else "FINISHED"})
+        if path == "ig1/media_publish":
+            if state["publish_fails"] > 0:
+                state["publish_fails"] -= 1
+                return R({"error": {"message": "The media with ID c1 cannot be found."}}, 400)
+            return R({"id": "igmedia1"})
+        return R({"error": {"message": f"unexpected {path}"}}, 400)
+
+    orig = ap.requests.request
+    ap.requests.request = fake_request
+    try:
+        m = ap.Meta(ap.load_clients(store)[0], sleep=lambda s: None)
+        assert m.post("instagram", {"type": "image"}, "https://x/a.jpg") == "igmedia1"     # 2 fails, then ok
+        assert [c[1] for c in calls].count("ig1/media") == 1                                # one upload only
+        calls.clear(); state.update(publish_fails=99, published_after_fail=True)
+        assert m.post("instagram", {"type": "image"}, "https://x/a.jpg") == "c1"            # error, but it went out
+        assert [c[1] for c in calls].count("ig1/media_publish") == 1
+        calls.clear(); state.update(publish_fails=99, published_after_fail=False)
+        try:
+            m.post("instagram", {"type": "image"}, "https://x/a.jpg")
+            raise AssertionError("should have failed")
+        except ap.MetaError as e:
+            assert "cannot be found" in str(e)
+        assert [c[1] for c in calls].count("ig1/media_publish") == 4                        # retried, same container
+    finally:
+        ap.requests.request = orig
+    srv.shutdown()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
