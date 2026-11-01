@@ -4,8 +4,13 @@
 -- double-posts).
 --
 -- Before running: make a fine-grained GitHub token (Only select repositories -> story-autopilot,
--- Permissions -> Actions: Read and write, nothing else) and paste it below. Change the repo
--- path if your GitHub account or repo name differ.
+-- Permissions -> Actions: Read and write, nothing else).
+--
+-- NEVER put the token in this file in GitHub (the repo is public). Copy this script into
+-- Supabase -> SQL Editor, replace PASTE_TOKEN_HERE there, and run it. The token is stored
+-- encrypted in Supabase Vault; the timer reads it from there. Afterwards, delete the query from
+-- the SQL Editor (or set it back to PASTE_TOKEN_HERE) so no plain copy is left.
+-- Change the repo path below if your GitHub account or repo name differ.
 
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
