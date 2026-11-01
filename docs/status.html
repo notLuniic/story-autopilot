@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Story Autopilot status</title>
+<!-- A small read-only status card, made to be embedded (e.g. in Notion): /status.html?client=gwc -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#ffffff; --ink:#121826; --muted:#5a6477; --line:#dce1ea; --accent:#2f50c8; --accent-ink:#fff;
+  --ok:#1d7549; --ok-soft:#e0f2e8; --warn:#935600; --warn-soft:#faefd9; --bad:#b0251d; --bad-soft:#fae3e1; --sunk:#eef1f6;
+  --f:"Schibsted Grotesk","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#191919; --ink:#e6eaf2; --muted:#9aa3b5; --line:#2f3440; --accent:#8ba3ff; --accent-ink:#111;
+  --ok:#6dd29d; --ok-soft:#163224; --warn:#efb65a; --warn-soft:#392a12; --bad:#ff8a7f; --bad-soft:#3c1c1a; --sunk:#252830; color-scheme:dark }}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.4}
+.card{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px}
+.brand{display:flex;align-items:center;gap:9px;margin-right:auto;min-width:0}
+.mark{width:26px;height:26px;border-radius:7px;background:var(--accent);position:relative;flex:none}
+.mark::before,.mark::after{content:"";position:absolute;top:6px;bottom:6px;width:4px;border-radius:2px;background:var(--accent-ink)}
+.mark::before{left:7px}.mark::after{left:14px;opacity:.55}
+.brand b{display:block;font-size:14px}
+.brand span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.ok{background:var(--ok-soft);color:var(--ok)} .warn{background:var(--warn-soft);color:var(--warn)} .bad{background:var(--bad-soft);color:var(--bad)}
+a.open{font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none;white-space:nowrap}
+a.open:hover{text-decoration:underline}
+.foot{width:100%;font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card" id="card"><div class="brand"><div class="mark" aria-hidden="true"></div><div><b>Story Autopilot</b><span>Loading…</span></div></div></div>
+<script src="config.js"></script>
+<script>
+"use strict";
+const CFG = window.STORY_AUTOPILOT || {};
+const slug = new URLSearchParams(location.search).get("client");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 2 ? "just now" : m < 60 ? `${m} min ago` : m < 48*60 ? `${Math.round(m/60)} h ago` : `${Math.round(m/1440)} days ago`; };
+
+function render(html){ document.getElementById("card").innerHTML = html; }
+function brand(sub){ return `<div class="brand"><div class="mark" aria-hidden="true"></div><div><b>Story Autopilot</b><span>${esc(sub)}</span></div></div>`; }
+
+async function load(){
+  if (!CFG.supabaseUrl || !CFG.supabaseKey) return render(brand("Not set up: docs/config.js is empty"));
+  try {
+    const headers = {apikey: CFG.supabaseKey, "Content-Type": "application/json"};
+    if (CFG.supabaseKey.startsWith("eyJ")) headers.Authorization = "Bearer " + CFG.supabaseKey;
+    const r = await fetch(CFG.supabaseUrl.replace(/\/$/, "") + "/rest/v1/rpc/autopilot_public_status", {method:"POST", headers, body:"{}", cache:"no-store"});
+    if (!r.ok) throw new Error(r.status === 404 ? "status summary not set up (run supabase/status.sql)" : `HTTP ${r.status}`);
+    const s = await r.json();
+    const clients = s.clients || [];
+    const c = (slug && clients.find(x => x.slug === slug)) || clients[0];
+    if (!c) return render(brand("No clients yet"));
+    const mins = s.last_run_at ? (Date.now() - Date.parse(s.last_run_at)) / 60000 : Infinity;
+    const run = !s.last_run_at ? `<span class="pill warn">Autopilot hasn't run yet</span>`
+      : `<span class="pill ${mins > 60 ? "bad" : mins > 25 ? "warn" : s.ok === false ? "bad" : "ok"}">Autopilot ran ${ago(s.last_run_at)}${s.ok === false && mins <= 60 ? ", with errors" : ""}</span>`;
+    const wk = (c.weeks || [])[0];
+    const week = !wk ? "" : wk.problems ? `<span class="pill bad">This week: ${wk.problems} problem${wk.problems > 1 ? "s" : ""}</span>`
+      : `<span class="pill ${wk.ready ? "ok" : ""}">This week: ${wk.ready} ${wk.ready === 1 ? "story" : "stories"} locked in</span>`;
+    const meta = c.meta_ok === false ? `<span class="pill bad">Meta problem</span>` : "";
+    const app = location.href.replace(/status\.html.*$/, "");
+    render(`${brand(c.name)}
+      <div class="pills"><span class="pill ${c.paused ? "warn" : "ok"}">${c.paused ? "Paused" : "Live"}</span>${run}${week}${meta}</div>
+      <a class="open" href="${esc(app)}" target="_blank" rel="noopener">Open app →</a>
+      <div class="foot">Updated ${new Date().toLocaleTimeString("en-AU", {hour:"numeric", minute:"2-digit"})} · refreshes every minute</div>`);
+  } catch(e){ render(brand("Can't load status: " + e.message)); }
+}
+load();
+setInterval(load, 60e3);
+</script>
+</body>
+</html>

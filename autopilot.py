@@ -266,6 +266,9 @@ class Client:
 
 def load_clients(store, only=None):
     rows = store.clients()
+    if not rows:
+        raise ConfigError("no clients found in Supabase. Check the clients table has a row (setup.sql adds 'gwc') "
+                          "and that SUPABASE_URL points at the right project")
     if only:
         rows = [r for r in rows if r["slug"] == only]
         if not rows:
