@@ -464,7 +464,24 @@ class Meta:
             self.sleep(5 if video else 3)
         else:
             raise MetaError("Instagram took too long to process the media")
-        return graph("POST", f"{self.c.ig_id}/media_publish", creation_id=cid, access_token=self.c.token).get("id")
+        # Instagram sometimes reports FINISHED a moment before the container can be published, and
+        # media_publish can fail even though the story went out. So retry on the SAME container
+        # (never a new upload) and, if publishing still errors, check whether it was published.
+        self.sleep(3)
+        last = None
+        for attempt in range(4):
+            try:
+                return graph("POST", f"{self.c.ig_id}/media_publish", creation_id=cid,
+                             access_token=self.c.token).get("id")
+            except MetaError as e:
+                last = e
+                try:
+                    if graph("GET", cid, fields="status_code", access_token=self.c.token).get("status_code") == "PUBLISHED":
+                        return cid                         # it did go out; don't post it again
+                except MetaError:
+                    pass
+                self.sleep(5 * (attempt + 1))
+        raise last
 
     # Facebook Page: photo uploaded unpublished then made a story; video via the 3-step upload
     def facebook(self, post, url):
