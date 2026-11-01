@@ -170,6 +170,14 @@ def make_handler(db):
 
         # ---- database
         def rest(self, table, q):
+            if table == "rpc/autopilot_public_status":         # the public status summary (status.sql)
+                st = (db.tables["autopilot_status"] or [{}])[0]
+                locks = {l["client"]: l for l in db.tables["lockins"]}
+                return self.send(200, {"last_run_at": st.get("last_run_at"), "ok": st.get("ok"), "clients": [
+                    {"slug": c["slug"], "name": c["name"], "paused": c["paused"],
+                     "meta_ok": (locks.get(c["slug"], {}).get("account") or {}).get("ok"),
+                     "checked_at": locks.get(c["slug"], {}).get("checked_at"),
+                     "weeks": locks.get(c["slug"], {}).get("weeks")} for c in db.tables["clients"]]})
             if table not in PKEYS:
                 return self.send(404, {"message": f"relation {table} does not exist"})
             who = self.who()

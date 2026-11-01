@@ -47,7 +47,7 @@ Done inside the **client's** business portfolio, so the client keeps ownership a
 
 1. **Check the accounts.** Instagram must be a **Business** account linked to the Facebook Page, and both must be in the client's portfolio (business.facebook.com → Settings → Accounts).
 2. **Create the Meta app.** developers.facebook.com → My Apps → Create App → the use case for managing content on Instagram (or Other → Business). Connect it to the client's portfolio.
-3. **System user and token.** business.facebook.com → Settings → Users → System users → Add (`story-autopilot`, role Admin) → Assign assets: the app, the Page and the Instagram account, full control → **Generate new token** → the app, expiry **Never**, permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `business_management`. Copy it, as it's only shown once.
+3. **System user and token.** business.facebook.com → Settings → Users → System users → Add (`story-autopilot`, role Admin) → Assign assets: the app, the Page and the Instagram account, full control → **Generate new token** → the app, expiry **Never**, permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` (`business_management` is optional). If the Page permissions aren't listed: add the Page use case to the Meta app, assign the assets first, reload, then generate the token. Copy it, as it's only shown once.
 4. **Secrets:** `GWC_META_TOKEN` = the token, and `META_TOKEN` = the same token (temporary).
 5. **IDs:** Actions → Post stories → Run workflow → `ids`. Add the printed Page ID and Instagram ID as `GWC_PAGE_ID` and `GWC_IG_ID`. Delete `META_TOKEN`.
 6. **Check:** Run workflow → `check`. It lists the Instagram username, Page name and "never expires", and the app's lock-in panel shows **Meta connected**.
@@ -58,13 +58,30 @@ If Meta says the app must be **Live** for posts to be public, switch it to Live 
 
 Secret names always start with the client's code in capitals: `GWC_…` for `gwc`.
 
+### 4. Reliable timing: the Supabase timer (5 minutes)
+
+GitHub's own 15-minute schedule is best-effort, and on a quiet free repo it skips most runs (GWC's first day: 5 runs instead of about 96). A "run now" request starts within seconds, so a timer inside Supabase sends one every 15 minutes. GitHub's schedule stays on as a backup; an extra run never double-posts.
+
+1. **GitHub token for the timer:** profile picture → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token. Name `story-autopilot-starter`; expiry the longest offered (put a renewal reminder in your calendar); Repository access: *Only select repositories* → `story-autopilot`; Permissions: **Actions → Read and write**, nothing else.
+2. **Supabase → SQL Editor → New query:** paste `supabase/timer.sql`, replace `PASTE_TOKEN_HERE` with the token (and the repo path if yours differs), **Run**.
+3. **Check after 15 minutes:** Actions shows a Post stories run every 15 minutes ("Manually run by …", because they use your token) and the app's top bar stays under about 20 minutes. If not, run `select created, status_code, content from net._http_response order by created desc limit 5;`: 204 means GitHub accepted the request; 401/404 means the token or repo path is wrong.
+4. **When the token expires:** make a new one and run `select vault.update_secret((select id from vault.secrets where name = 'github_dispatch_token'), 'NEW_TOKEN');`
+
+### 5. Status card for Notion (optional, 5 minutes)
+
+`docs/status.html` is a small read-only card showing Live/Paused, when the autopilot last ran, and how many stories are locked in this week. It needs no sign-in, so it can be embedded in Notion.
+
+1. **Supabase → SQL Editor:** paste `supabase/status.sql` and **Run**. It adds a summary anyone can read: client name, Live/Paused, Meta connected, story counts and last run time. No story names, artwork, times or log messages.
+2. Open `https://<your-username>.github.io/story-autopilot/status.html?client=gwc` to check it.
+3. In Notion: type `/embed`, paste that link, and resize the block to about 130 px high. It refreshes every minute.
+
 ## Limits
 
 - Image: JPG (the app converts PNG/WebP), up to 8 MB, 1080×1920 best.
 - Video: MP4 or MOV, 3–60 seconds, **up to 50 MB** (Supabase free plan), 9:16, H.264.
 - Storage: 1 GB on the free plan. The autopilot deletes media for stories more than 8 days past their last date, so it doesn't fill up.
 - Supabase pauses free projects after a week with no activity. The autopilot connects every 15 minutes, which keeps it active; if it's ever paused, restore it from the Supabase dashboard.
-- GitHub runs scheduled jobs on a best-effort basis: stories usually go out 4–10 minutes after their time, sometimes later. After 3 hours a story is logged as missed.
+- With the Supabase timer, stories usually go out 1–3 minutes after their time. Without it, GitHub's schedule alone can leave gaps of hours. After 3 hours a story is logged as missed.
 - GitHub switches off schedules in repos with no activity for 60 days; the workflow re-confirms its schedule daily. If the app's top bar ever says the autopilot last ran hours ago, check the Actions tab and click **Enable workflow** if needed.
 - Meta API version: `GRAPH_VERSION` (default `v25.0`). If posts start failing with a version error, bump it.
 
@@ -73,7 +90,7 @@ Secret names always start with the client's code in capitals: `GWC_…` for `gwc
 1. In Supabase's SQL Editor:
    `insert into clients (slug, name, timezone, platforms) values ('acme', 'Acme Bar', 'Australia/Sydney', '{instagram,facebook}');`
    (Instagram only: `'{instagram}'`.)
-2. Do the Meta setup in their portfolio and add `ACME_META_TOKEN`, `ACME_IG_ID`, `ACME_PAGE_ID`.
+2. Do the Meta setup in their portfolio and add `ACME_META_TOKEN`, `ACME_IG_ID`, `ACME_PAGE_ID`. Then add the same three lines to the `env:` list in `.github/workflows/post-stories.yml` (copy the `GWC_` ones and rename).
 3. Pick them from the client menu in the app; switch them live in Settings after a test.
 
 ## Testing locally
